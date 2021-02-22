@@ -1,0 +1,20 @@
+{
+  "compile_entry": "test_entry",
+  "app_info": {
+    "name": "test_name",
+    "id": "test_id",
+    "version": "test_version",
+    "description": "test_des"
+  },
+  "workdir": {
+    "root": "/home/apps",
+    "log": "."
+  },
+  "config": {
+    "port": 6000
+  },
+  "cmd": {
+    "start": "",
+    "stop": ""
+  }
+}

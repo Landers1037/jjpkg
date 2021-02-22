@@ -9,6 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -21,9 +22,16 @@ func main() {
 	// get os system
 	sys := runtime.GOOS
 	args := os.Args
+	var argsMap map[string]string
+	var err error
 
 	fmt.Printf("Your System is %s.\n", sys)
-	argsMap, err := parseArgs(args)
+	if len(args) >= 4 {
+		argsMap, err = parseArgs(args)
+	}else {
+		argsMap, err = parseJson()
+	}
+
 	if err != nil {
 		fmt.Println("error, parse args failed.")
 		os.Exit(1)
@@ -42,6 +50,7 @@ func main() {
 	//
 	createOwnjj(argsMap["name"], argsMap["id"], argsMap["version"], argsMap["description"])
 	//
+	createPID(argsMap["name"])
 	fmt.Println("Thanks for using jjpkg. Enjoy it!")
 }
 
@@ -81,6 +90,22 @@ func parseArgs(args []string) (map[string]string, error) {
 		"id": id,
 		"version": version,
 		"description": description,
+	}, nil
+}
+
+// parse from file jjpkg.json
+func parseJson() (map[string]string, error) {
+	rawBytes, e := ioutil.ReadFile("jjpkg.json")
+	if e !=nil {
+		return nil, e
+	}
+
+	return map[string]string{
+		"file": gjson.GetBytes(rawBytes, "compile_entry").String(),
+		"name": gjson.GetBytes(rawBytes, "app_info.name").String(),
+		"id": gjson.GetBytes(rawBytes, "app_info.id").String(),
+		"version": gjson.GetBytes(rawBytes, "app_info.version").String(),
+		"description": gjson.GetBytes(rawBytes, "app_info.description").String(),
 	}, nil
 }
 
@@ -144,4 +169,14 @@ func createOwnjj(appName, appId, appVer, appDes string) {
 		fmt.Printf("error, createjj failed. %s\n", e.Error())
 	}
 	fmt.Println("success, createjj file.")
+}
+
+// create pid file
+func createPID(appName string) {
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("touch %s.pid", appName))
+	e := cmd.Run()
+	if e != nil {
+		fmt.Printf("error, createPID failed. %s\n", e.Error())
+	}
+	fmt.Println("success, createPID.")
 }

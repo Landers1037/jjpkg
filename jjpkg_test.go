@@ -27,3 +27,12 @@ func TestCreateJJ(t *testing.T) {
 	createOwnjj("app", "app_test", "1.0.0", "just for test")
 	t.Skip()
 }
+
+func TestParseJson(t *testing.T) {
+	m, e := parseJson()
+	if e != nil {
+		t.Error(e.Error())
+	}else {
+		t.Logf("%+v", m)
+	}
+}
