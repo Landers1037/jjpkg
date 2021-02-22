@@ -26,9 +26,12 @@ func main() {
 	var err error
 
 	fmt.Printf("Your System is %s.\n", sys)
+	fmt.Println("Start to parse compile data.")
 	if len(args) >= 4 {
+		fmt.Println("Start parse args.")
 		argsMap, err = parseArgs(args)
 	}else {
+		fmt.Println("Start parse jjpkg file.")
 		argsMap, err = parseJson()
 	}
 
@@ -36,7 +39,9 @@ func main() {
 		fmt.Println("error, parse args failed.")
 		os.Exit(1)
 	}
+	fmt.Println("Parse compile data successfully.")
 	// start building
+	fmt.Println("Start to build app.")
 	err = makeBuildCMD(argsMap)
 	if err != nil {
 		fmt.Printf("error, build binary failed. %s\n", err.Error())
@@ -116,7 +121,7 @@ func makeBuildCMD(argsMap map[string]string) error {
 		return errors.New("No Go compiler.")
 	}
 
-	cmd := fmt.Sprintf("go build -v -o %s -ldflags=\"-w -s\" -tags %s %s", argsMap["id"], argsMap["version"], argsMap["file"])
+	cmd := fmt.Sprintf("go build -o %s -ldflags=\"-w -s\" -tags %s %s", argsMap["id"], argsMap["version"], argsMap["file"])
 	sys := runtime.GOOS
 	if sys == "darwin" {
 		c, err := exec.Command("zsh", "-c", cmd).Output()
