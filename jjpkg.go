@@ -7,6 +7,7 @@ Github: github.com/landers1037
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/tidwall/gjson"
@@ -131,8 +132,27 @@ func makeBuildCMD(argsMap map[string]string) error {
 		c, err := exec.Command("bash", "-c", cmd).Output()
 		fmt.Println(string(c))
 		return err
-	}else {
-		return errors.New("windows not supported.")
+	}else if sys == "windows" {
+		fmt.Println("windows系统需要保证你的go在path路径下")
+		in := bytes.NewBuffer(nil)
+		var out bytes.Buffer
+		c := exec.Command("cmd")
+		c.Stdin = in
+		c.Stdout = &out
+		in.WriteString(cmd + "\n")
+		e := c.Start()
+		if e != nil {
+			return e
+		}
+		e = c.Wait()
+		if e != nil {
+			return e
+		}
+
+		fmt.Println(out.String())
+		return nil
+	} else {
+		return errors.New("your system is not supported.")
 	}
 }
 
