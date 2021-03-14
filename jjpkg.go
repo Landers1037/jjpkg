@@ -24,6 +24,7 @@ func main() {
 	sys := runtime.GOOS
 	args := os.Args
 	var argsMap map[string]string
+	var analy bool
 	var err error
 
 	fmt.Printf("Your System is %s.\n", sys)
@@ -33,6 +34,9 @@ func main() {
 		argsMap, err = parseArgs(args)
 	}else {
 		fmt.Println("Start parse jjpkg file.")
+		if len(os.Args) == 2 && os.Args[1] == "analy" {
+			analy = true
+		}
 		argsMap, err = parseJson()
 	}
 
@@ -43,7 +47,7 @@ func main() {
 	fmt.Println("Parse compile data successfully.")
 	// start building
 	fmt.Println("Start to build app.")
-	err = makeBuildCMD(argsMap)
+	err = makeBuildCMD(argsMap, analy)
 	if err != nil {
 		fmt.Printf("error, build binary failed. %s\n", err.Error())
 		os.Exit(2)
@@ -116,13 +120,19 @@ func parseJson() (map[string]string, error) {
 }
 
 // build
-func makeBuildCMD(argsMap map[string]string) error {
+func makeBuildCMD(argsMap map[string]string, analy bool) error {
 	checkRes := checkGo()
 	if !checkRes {
 		return errors.New("No Go compiler.")
 	}
 
-	cmd := fmt.Sprintf("go build -o %s -ldflags=\"-w -s\" -tags %s %s", argsMap["id"], argsMap["version"], argsMap["file"])
+	var rawCmd string
+	if analy {
+		rawCmd = "go build -o %s -ldflags=\"-w -s\" -gcflags=\"-m\" -trimpath -p 2 -tags %s %s"
+	}else {
+		rawCmd = "go build -o %s -ldflags=\"-w -s\" -trimpath -p 2 -tags %s %s"
+	}
+	cmd := fmt.Sprintf(rawCmd, argsMap["id"], argsMap["version"], argsMap["file"])
 	sys := runtime.GOOS
 	if sys == "darwin" {
 		c, err := exec.Command("zsh", "-c", cmd).Output()
