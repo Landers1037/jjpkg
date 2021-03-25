@@ -128,9 +128,9 @@ func makeBuildCMD(argsMap map[string]string, analy bool) error {
 
 	var rawCmd string
 	if analy {
-		rawCmd = "go build -o %s -ldflags=\"-w -s\" -gcflags=\"-m\" -trimpath -p 2 -tags %s %s"
+		rawCmd = "go build -a -o %s -ldflags=\"-w -s\" -gcflags=\"-m\" -trimpath -p 2 -tags %s %s"
 	}else {
-		rawCmd = "go build -o %s -ldflags=\"-w -s\" -trimpath -p 2 -tags %s %s"
+		rawCmd = "go build -a -o %s -ldflags=\"-w -s\" -trimpath -p 2 -tags %s %s"
 	}
 	cmd := fmt.Sprintf(rawCmd, argsMap["id"], argsMap["version"], argsMap["file"])
 	sys := runtime.GOOS
