@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/tidwall/gjson"
 	"io/ioutil"
@@ -16,16 +17,32 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func main() {
 	fmt.Println("JJPKG is an application packager for jjapps in linux.")
 	// get os system
 	sys := runtime.GOOS
-	args := os.Args
+	// flags
+	upx := flag.Bool("upx", false, "use upx tool")
+	mod := flag.String("mod", "", "choose go mod [mod/vendor], if empty use GOPATH")
+	analyCode := flag.Bool("a", false, "analy the code")
+	force := flag.Bool("f", false, "force rebuild")
+	detail := flag.Bool("d", false, "show detail")
+	level := flag.String("level", "6", "upx zip level")
+	help := flag.Bool("h", false, "show usage")
+	flag.Parse()
+
+	if *help {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	args := flag.Args()
 	var argsMap map[string]string
-	var analy bool
 	var err error
+	var analy bool
 
 	fmt.Printf("Your System is %s.\n", sys)
 	fmt.Println("Start to parse compile data.")
@@ -34,7 +51,7 @@ func main() {
 		argsMap, err = parseArgs(args)
 	}else {
 		fmt.Println("Start parse jjpkg file.")
-		if len(os.Args) == 2 && os.Args[1] == "analy" {
+		if *analyCode {
 			analy = true
 		}
 		argsMap, err = parseJson()
@@ -47,7 +64,7 @@ func main() {
 	fmt.Println("Parse compile data successfully.")
 	// start building
 	fmt.Println("Start to build app.")
-	err = makeBuildCMD(argsMap, analy)
+	err = makeBuildCMD(argsMap, analy, *force, *mod, *upx, *level, *detail)
 	if err != nil {
 		fmt.Printf("error, build binary failed. %s\n", err.Error())
 		os.Exit(2)
@@ -105,6 +122,11 @@ func parseArgs(args []string) (map[string]string, error) {
 
 // parse from file jjpkg.json
 func parseJson() (map[string]string, error) {
+	_, e := os.Stat("jjpkg.json")
+	if e != nil {
+		fmt.Println("There is no jjpkg.json here.")
+		return nil, e
+	}
 	rawBytes, e := ioutil.ReadFile("jjpkg.json")
 	if e !=nil {
 		return nil, e
@@ -120,28 +142,231 @@ func parseJson() (map[string]string, error) {
 }
 
 // build
-func makeBuildCMD(argsMap map[string]string, analy bool) error {
+func makeBuildCMD(argsMap map[string]string, analy, force bool, mod string, upx bool, level string, detail bool) error {
 	checkRes := checkGo()
 	if !checkRes {
 		return errors.New("No Go compiler.")
 	}
 
 	var rawCmd string
+	var analyString string
+	var forceString string
+
 	if analy {
-		rawCmd = "go build -a -o %s -ldflags=\"-w -s\" -gcflags=\"-m\" -trimpath -p 2 -tags %s %s"
+		analyString = "-gcflags=\"-m\""
 	}else {
-		rawCmd = "go build -a -o %s -ldflags=\"-w -s\" -trimpath -p 2 -tags %s %s"
+		analyString = ""
 	}
-	cmd := fmt.Sprintf(rawCmd, argsMap["id"], argsMap["version"], argsMap["file"])
+
+	if force {
+		forceString = "-a"
+	}else {
+		forceString = ""
+	}
+
+	switch mod {
+	case "":
+		rawCmd = "export GO111MODULE=off && go build %s -x -o %s -ldflags=\"-w -s\" %s -trimpath -p 2 -tags %s %s"
+	case "mod":
+		rawCmd = "export GO111MODULE=on && go build -mod=mod %s -x -o %s -ldflags=\"-w -s\" %s -trimpath -p 2 -tags %s %s"
+	case "vendor":
+		rawCmd = "export GO111MODULE=on && go build -mod=vendor %s -x -o %s -ldflags=\"-w -s\" %s -trimpath -p 2 -tags %s %s"
+	default:
+		rawCmd = "export GO111MODULE=off && go build %s -x -o %s -ldflags=\"-w -s\" %s -trimpath -p 2 -tags %s %s"
+	}
+
+	cmd := fmt.Sprintf(rawCmd, forceString, argsMap["id"], analyString, argsMap["version"], argsMap["file"])
+	fmt.Println("Build CMD is ", cmd)
 	sys := runtime.GOOS
 	if sys == "darwin" {
-		c, err := exec.Command("zsh", "-c", cmd).Output()
-		fmt.Println(string(c))
-		return err
+		c := exec.Command("zsh", "-c", cmd)
+		stdout, e := c.StdoutPipe()
+		c.Stderr = os.Stdout
+
+		if e != nil {
+			fmt.Println("Init cmd pipe failed.")
+			return e
+		}
+
+		if err := c.Start();err != nil {
+			fmt.Println("Cmd start failed.")
+			return err
+		}
+
+		for {
+			tmp := make([]byte, 1024)
+			_, err := stdout.Read(tmp)
+			if detail {
+				fmt.Print(string(tmp))
+			}else {
+				for _, r := range "-\\|/" {
+					fmt.Printf("\r%c", r)
+					time.Sleep(400 * time.Millisecond)
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		if err := c.Wait();err != nil {
+			fmt.Println("Failed to compile.")
+			return err
+		}
+
+		fmt.Println("Compiled.")
+		if upx {
+			fmt.Println("-upx is specified")
+			fmt.Println("upx zip level is " + level)
+			fmt.Println(fmt.Sprintf("upx output is: %s-upx",  argsMap["id"]))
+			upxString := fmt.Sprintf("upx -%s -o %s-upx %s", level, argsMap["id"], argsMap["id"])
+			c := exec.Command("zsh", "-c", upxString)
+			stdout, e := c.StdoutPipe()
+			c.Stderr = os.Stdout
+
+			if e != nil {
+				fmt.Println("Init cmd pipe failed.")
+				return e
+			}
+
+			if err := c.Start();err != nil {
+				fmt.Println("Cmd start failed.")
+				return err
+			}
+
+			for {
+				tmp := make([]byte, 1024)
+				_, err := stdout.Read(tmp)
+				if detail {
+					fmt.Print(string(tmp))
+				}else {
+					for _, r := range "-\\|/" {
+						fmt.Printf("\r%c", r)
+						time.Sleep(400 * time.Millisecond)
+					}
+				}
+				if err != nil {
+					break
+				}
+			}
+			if err := c.Wait();err != nil {
+				fmt.Println("Failed to compile.")
+				return err
+			}
+			fmt.Println("Done with upx.")
+			return nil
+		}else {
+			fmt.Println("-upx is not specified.")
+			return nil
+		}
+
 	}else if sys == "linux" {
-		c, err := exec.Command("bash", "-c", cmd).Output()
-		fmt.Println(string(c))
-		return err
+		c := exec.Command("bash", "-c", cmd)
+
+		if detail {
+			fmt.Println("Print build log to Terminal.")
+			stdout, e := c.StdoutPipe()
+			// 这里保证了出现错误直接显示在前台 如果不做重定向则不会显示
+			c.Stderr = os.Stdout
+			if e != nil {
+				fmt.Println("Init cmd pipe failed.")
+				return e
+			}
+			if err := c.Start();err != nil {
+				fmt.Println("Cmd start failed.")
+				return err
+			}
+			for {
+				tmp := make([]byte, 4)
+				_, err := stdout.Read(tmp)
+				fmt.Printf("%s", tmp)
+				if err != nil {
+					_ = stdout.Close()
+					break
+				}
+			}
+			if err := c.Wait();err != nil {
+				fmt.Println("Failed to compile.")
+				return err
+			}
+		}else {
+			fmt.Println("Build progress start.")
+			stdout, e := c.StdoutPipe()
+			//c.Stderr = os.Stdout
+			if e != nil {
+				fmt.Println("Init cmd pipe failed.")
+				return e
+			}
+
+			if err := c.Start();err != nil {
+				fmt.Println("Cmd start failed.")
+				return err
+			}
+			for {
+				o := make([]byte, 1024)
+				_, e := stdout.Read(o)
+				fmt.Println(string(o))
+				for _, str := range "-\\|/" {
+					fmt.Printf("\r%c", str)
+					time.Sleep(200 * time.Millisecond)
+				}
+				if e != nil{
+					break
+				}
+			}
+			if err := c.Wait();err != nil {
+				fmt.Println("Failed to compile.")
+				return err
+			}
+		}
+
+		fmt.Println("Compiled.")
+		if upx {
+			fmt.Println("-upx is specified")
+			fmt.Println("upx zip level is " + level)
+			fmt.Println(fmt.Sprintf("upx output is: %s-upx",  argsMap["id"]))
+			upxString := fmt.Sprintf("upx -%s -o %s-upx %s", level, argsMap["id"], argsMap["id"])
+			c := exec.Command("bash", "-c", upxString)
+			stdout, e := c.StdoutPipe()
+			c.Stderr = os.Stdout
+
+			if e != nil {
+				fmt.Println("Init cmd pipe failed.")
+				return e
+			}
+
+			if err := c.Start();err != nil {
+				fmt.Println("Cmd start failed.")
+				return err
+			}
+
+			for {
+				// if print detail
+				tmp := make([]byte, 1024)
+				_, err := stdout.Read(tmp)
+				if detail {
+					fmt.Print(string(tmp))
+				}else {
+					for _, r := range "-\\|/" {
+						fmt.Printf("\r%c", r)
+						time.Sleep(200 * time.Millisecond)
+					}
+				}
+
+				if err != nil {
+					break
+				}
+			}
+			if err := c.Wait();err != nil {
+				fmt.Println("Failed to compile.")
+				return err
+			}
+			fmt.Println("Done with upx.")
+			return nil
+		}else {
+			fmt.Println("-upx is not specified.")
+			return nil
+		}
+
 	}else if sys == "windows" {
 		fmt.Println("windows系统需要保证你的go在path路径下")
 		in := bytes.NewBuffer(nil)
