@@ -20,12 +20,18 @@ import (
 	"time"
 )
 
+const (
+	Version = "1.3"
+	Build = "2021-04-22"
+)
+
 func main() {
 	fmt.Println("JJPKG is an application packager for jjapps in linux.")
 	// get os system
 	sys := runtime.GOOS
 	// flags
 	upx := flag.Bool("upx", false, "use upx tool")
+	plugin := flag.Bool("p", false, "build to plugin")
 	mod := flag.String("mod", "", "choose go mod [mod/vendor], if empty use GOPATH")
 	analyCode := flag.Bool("a", false, "analy the code")
 	force := flag.Bool("f", false, "force rebuild")
@@ -35,10 +41,28 @@ func main() {
 	flag.Parse()
 
 	if *help {
+		fmt.Printf("JJPKG INFO:\nVersion: %s Build: %s\n", Version, Build)
 		flag.Usage()
 		os.Exit(0)
 	}
 
+	if *plugin {
+		fmt.Println("build to .so")
+		args := flag.Args()
+		if len(args) <= 1 {
+			fmt.Println("need file input")
+		}else {
+			fmt.Printf("input file is %s\n", args[1])
+			cmd := fmt.Sprintf("go build --buildmode=plugin %s", args[1])
+			e := exec.Command("bash", "-c", cmd).Run()
+			if e != nil {
+				fmt.Printf("build failed %s\n", e.Error())
+			}else {
+				fmt.Println("done!")
+			}
+		}
+		os.Exit(0)
+	}
 	args := flag.Args()
 	var argsMap map[string]string
 	var err error
